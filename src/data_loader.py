@@ -68,7 +68,6 @@ class TimeSegmentationDataset(Dataset):
         self.sequence_length = sequence_length
         
         self.num_features = len(self.features_1)
-        self.label_feature = label_feature
         
     def __len__(self):
         # 数据集的长度

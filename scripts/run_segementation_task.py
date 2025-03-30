@@ -1,7 +1,7 @@
 import argparse
 import sys, os
 import glob
-from transformers import PatchTSTConfig, PatchTSTForRegression
+from transformers import PatchTSTConfig, PatchTSTForClassification
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,7 +12,7 @@ import pandas as pd
 sys.path.append(os.path.abspath('../src/'))
 from model import LSTMSequenceLabeler
 # from train import train_one_epoch, validate_one_epoch
-from train import patch_tst_train_regression_one_epoch, patch_tst_validation_regression_one_epoch
+from train import patch_tst_train_segmentation_one_epoch, patch_tst_validation_segmentation_one_epoch
 from data_loader import getDataSet
 
 def main(args):
@@ -22,14 +22,14 @@ def main(args):
     if args.model == 'PatchTST':
         config = PatchTSTConfig(
             num_input_channels=6,
-            num_targets=2,
+            num_targets=1500,
             context_length=1500,
             patch_length=50,
             stride=25,
             use_cls_token=True,
             loss = "mse"
         )
-        model = PatchTSTForRegression(config=config).to(device)
+        model = PatchTSTForClassification(config=config).to(device)
     elif args.model == 'LSTM': 
         model = LSTMSequenceLabeler(input_dim=6, hidden_dim=128, num_layers=2, dropout_rate=0.3).to(device)
     
@@ -38,9 +38,9 @@ def main(args):
     scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3, verbose=True) # TODO hyperparameter
 
     train_list, test_list = train_test_split(xlsx_name_list, test_size=0.33, random_state=42)    
-    PeriodDataSet = getDataSet(task = 'Regression')
-    train_dataloader = DataLoader(PeriodDataSet(xlsx_name_list = train_list, label_feature=['执行时间', '反应时间']), batch_size=batch_size, shuffle=True)   
-    validation_dataloader = DataLoader(PeriodDataSet(xlsx_name_list = test_list, label_feature=['执行时间', '反应时间']), batch_size=batch_size, shuffle=True)    
+    PeriodDataSet = getDataSet(task = 'Segmentation')
+    train_dataloader = DataLoader(PeriodDataSet(xlsx_name_list = train_list), batch_size=batch_size, shuffle=True)   
+    validation_dataloader = DataLoader(PeriodDataSet(xlsx_name_list = test_list), batch_size=batch_size, shuffle=True) 
 
     early_stopping_patience = 10
     best_val_loss = float('inf')
@@ -52,12 +52,12 @@ def main(args):
         'train_loss': [],
         'val_loss': []
     }
-    lossfun = nn.MSELoss()
+    lossfun = nn.BCEWithLogitsLoss()
 
     for epoch in range(epochs):
         print(f'Epoch {epoch + 1}/{epochs}')
-        train_loss = patch_tst_train_regression_one_epoch(model, train_dataloader, optimizer, lossfun = lossfun, device = device)
-        val_loss = patch_tst_validation_regression_one_epoch(model, validation_dataloader, lossfun = lossfun, device = device)
+        train_loss = patch_tst_train_segmentation_one_epoch(model, train_dataloader, optimizer, lossfun = lossfun, device = device)
+        val_loss = patch_tst_validation_segmentation_one_epoch(model, validation_dataloader, lossfun = lossfun, device = device)
 
         # Step the scheduler with validation loss
         scheduler.step(val_loss)
@@ -68,7 +68,7 @@ def main(args):
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             early_stopping_counter = 0
-            torch.save(model.to('cpu').state_dict(), f'{args.model}_regression_model.pth')
+            torch.save(model.to('cpu').state_dict(), f'{args.model}_segmentation_model.pth')
             model = model.to(device)
             print('Best model saved with validation loss:', best_val_loss)        
         else:
@@ -78,7 +78,7 @@ def main(args):
                 break
 
     log_df = pd.DataFrame.from_dict(log_dict)
-    log_df.to_csv(f'{args.model}_regression_log.csv')      
+    log_df.to_csv(f'{args.model}_segmentation_log.csv')      
     
 if __name__ == '__main__':
     # args = generate_parser()
